@@ -723,7 +723,7 @@ PUB-BASE-DIR is the root publication directory."
          (rss-base-dir
           (file-name-directory rss-file))
          (last-10-posts
-          (-take 10 (--sort (>= 0 (ego--compare-standard-date
+          (-take 50 (--sort (>= 0 (ego--compare-standard-date
                                    (ego--fix-timestamp-string
                                     (plist-get it :mod-date))
                                    (ego--fix-timestamp-string
