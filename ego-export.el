@@ -745,7 +745,13 @@ PUB-BASE-DIR is the root publication directory."
           ("date" (format-time-string "%a, %d %b %Y %T %Z"))
           ("items" (--map (ht ("item-title" (plist-get it :title))
                               ("item-link" (ego--get-full-url (plist-get it :uri)))
-                              ("item-description" (plist-get it :description))
+                              ("item-description" (let ((content (f-read (concat (plist-get it :pub-dir) "index.html"))))
+                                                    (cl-loop for strs in '("<head>\\(?:.\\|\n\\)*</head>"
+                                                                           "<header class=\"masthead\">\\(?:.\\|\n\\)*</header>"
+                                                                           "<div class=\"post-meta\">\\(?:.\\|\n\\)*")
+                                                             do (setq content (replace-regexp-in-string
+                                                                               strs "" content)))
+                                                    content))
                               ("item-update-date" (plist-get it :mod-date)))
                           last-10-posts))))
      rss-file)))
