@@ -8,7 +8,6 @@
 ;;         Kuangdash <kuangdash AT 163.com>
 ;; Keywords: org-mode, convenience, beautify
 ;; Homepage: https://github.com/emacs-china/EGO
-
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or
@@ -53,6 +52,16 @@ command to be executed."
     (shell-command command t nil)
     (buffer-substring (region-beginning) (region-end))))
 
+(defun ego--git-command (dir args)
+  "Execute git command with specified `ARGS' in `DIR'"
+  (ego--verify-git-repository dir)
+  (let* ((git-args (if (stringp args)
+                       args
+                     (string-join args " ")))
+         (command (concat "git " git-args)))
+    ;; (message "%s" command)
+    (ego--shell-command dir command t)))
+
 (defun ego--git-all-files (repo-dir &optional branch)
   "This function will return a list contains all org files in git repository
 presented by REPO-DIR, if optional BRANCH is offered, will check that branch
@@ -90,7 +99,9 @@ presented by REPO-DIR."
 
 (defun ego--git-change-branch (repo-dir branch-name)
   "This function will change branch to BRANCH-NAME of git repository presented
-by REPO-DIR only if there is nothing uncommitted in the current branch."
+by REPO-DIR only if there is nothing uncommitted in the current branch.
+
+If there is no branch named BRANCH-NAME, It will create an empty brranch"
   (let ((repo-dir (file-name-as-directory repo-dir))
         (output (ego--shell-command
                  repo-dir
@@ -103,8 +114,10 @@ by REPO-DIR only if there is nothing uncommitted in the current branch."
                   (concat "env LC_ALL=C git checkout " branch-name)
                   t))
     (when (string-match "\\(\\`error\\|[^a-zA-Z]error\\)" output)
-      (error "Failed to change branch to '%s' of repository '%s'."
-             branch-name repo-dir))))
+      (if (string-prefix-p (format "error: pathspec '%s' did not match any file(s) known to git." branch-name) output)
+          (ego--git-new-empty-branch repo-dir branch-name)
+        (error "Failed to change branch to '%s' of repository '%s'."
+               branch-name repo-dir)))))
 
 (defun ego--git-new-empty-branch (repo-dir branch-name)
   "This function will create a new empty branch with BRANCH-NAME, and checkout it. "
@@ -139,8 +152,8 @@ REPO-DIR, MESSAGE is the commit message."
     (ego--shell-command repo-dir "env LC_ALL=C git add ." t)
     (setq output
           (ego--shell-command repo-dir
-                             (format "env LC_ALL=C git commit -m \"%s\"" message)
-                             t))
+                              (format "env LC_ALL=C git commit -m \"%s\"" message)
+                              t))
     (when (not (or (string-match "\\[.* .*\\]" output) (string-match "nothing to commit" output)))
       (error "Failed to commit changes on current branch of repository '%s'."
              repo-dir))))
@@ -196,19 +209,19 @@ presented by REPO-DIR, return nil if there is no remote repository."
 (defun ego--git-get-publish-config (repo-dir org-branch html-branch)
   "Get publish-config argument for ego--do-publication."
   (let ((remote-repos (ego--git-remote-name repo-dir))
-            repo branchs)
-        (if (not remote-repos)
-            (error "No valid remote repository found.")
-          (if (> (length remote-repos) 1)
-              (setq repo (ido-completing-read "Which remote to push?: (if you don't want to push remote, [C-g])"
-                                              remote-repos nil t))
-            (setq repo (car remote-repos)))
-          (setq branchs
-                (ego--ido-completing-read-multiple "(multiple choices)branchs to push: "
-                                                  (list org-branch html-branch) nil t))
-          (if (or (not (member repo remote-repos)) (not branchs))
-              (error "Invalid remote repository '%s'." repo)
-            (cons repo branchs)))))
+        repo branchs)
+    (if (not remote-repos)
+        (error "No valid remote repository found.")
+      (if (> (length remote-repos) 1)
+          (setq repo (ido-completing-read "Which remote to push?: (if you don't want to push remote, [C-g])"
+                                          remote-repos nil t))
+        (setq repo (car remote-repos)))
+      (setq branchs
+            (ego--ido-completing-read-multiple "(multiple choices)branchs to push: "
+                                               (list org-branch html-branch) nil t))
+      (if (or (not (member repo remote-repos)) (not branchs))
+          (error "Invalid remote repository '%s'." repo)
+        (cons repo branchs)))))
 
 (defun ego--git-push-remote (repo-dir remote-repo branchs)
   "This function will push local branch to remote repository, REPO-DIR is the
@@ -219,8 +232,8 @@ it will be created."
   (let* ((default-directory (file-name-as-directory repo-dir))
          (cmd (append '("git")
                       `("push" ,remote-repo ,@(mapcar (lambda (branch)
-                                                       (concat branch ":" branch))
-                                                     branchs))))
+                                                        (concat branch ":" branch))
+                                                      branchs))))
          (proc (apply #'start-process "EGO-Async" ego--temp-buffer-name cmd)))
     (setq ego--async-publish-success nil)
     (set-process-filter proc `(lambda (proc output)
@@ -232,7 +245,6 @@ it will be created."
                                     (setf (point) (point-max))
                                     (insert "remote push success!")
                                     (setq ego--async-publish-success t)))))))
-
 
 (provide 'ego-git)
 
